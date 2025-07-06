@@ -6,8 +6,9 @@ public enum TokenType
 {
     Keyword, Identifier,
     Int, Float,
+    String, Char,
     Operator, Delimiter,
-    EOF
+    Error, EOF
 }
 
 public class Token
@@ -34,14 +35,18 @@ public class Lexer
 
     private static readonly string Patterns = @"
         (?<Whitespace>\s+)
-      | (?<Comment>\(\*[^]*?\*\))
+      | (?<Comment>\(\*.*?\*\))
+      | (?<String>""([^""\\]|\\.)*"")
+      | (?<Char>'([^'\\]|\\.)')
       | (?<Float>\d+\.\d+)
       | (?<Int>\d+)
       | (?<Ident>[a-zA-Z_][a-zA-Z0-9_']*)
       | (?<Op>==|->|:=|::|\+|\-|\*|\/|=|<>|<|>|&&|\|\|)
-      | (?<Delim>[()\[\]{};|,])";
+      | (?<Delim>[()\[\]{};|,])
+      | (?<Error>.)
+    ";
 
-    private readonly Regex regex = new(Patterns, RegexOptions.Compiled | RegexOptions.IgnorePatternWhitespace);
+    private readonly Regex regex = new(Patterns, RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnorePatternWhitespace);
     private readonly string source;
     private int index, line = 1, col = 1;
 
@@ -51,11 +56,7 @@ public class Lexer
     {
         foreach (Match m in regex.Matches(source))
         {
-            if (m.Groups["Whitespace"].Success)
-            {
-                Advance(m.Value); continue;
-            }
-            if (m.Groups["Comment"].Success)
+            if (m.Groups["Whitespace"].Success || m.Groups["Comment"].Success)
             {
                 Advance(m.Value); continue;
             }
@@ -65,9 +66,13 @@ public class Lexer
 
             if (m.Groups["Int"].Success) type = TokenType.Int;
             else if (m.Groups["Float"].Success) type = TokenType.Float;
-            else if (m.Groups["Ident"].Success && Keywords.Contains(lex)) type = TokenType.Keyword;
+            else if (m.Groups["String"].Success) type = TokenType.String;
+            else if (m.Groups["Char"].Success) type = TokenType.Char;
+            else if (m.Groups["Ident"].Success)
+                type = Keywords.Contains(lex) ? TokenType.Keyword : TokenType.Identifier;
             else if (m.Groups["Op"].Success) type = TokenType.Operator;
             else if (m.Groups["Delim"].Success) type = TokenType.Delimiter;
+            else if (m.Groups["Error"].Success) type = TokenType.Error;
 
             yield return new Token(type, lex, line, col);
             Advance(lex);
@@ -107,7 +112,10 @@ class Program
         var lexer = new Lexer(code);
         foreach (var token in lexer.Tokenize())
         {
+            ConsoleColor color = Console.ForegroundColor;
+            if (token.Type == TokenType.Error) Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"{token.Line}:{token.Column} {token.Type} → '{token.Lexeme}'");
+            Console.ForegroundColor = color;
         }
 
         Console.WriteLine("\nPresiona una tecla para salir...");
