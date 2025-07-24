@@ -1,4 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using OcamlCompiler.Lexing;
+using OcamlCompiler.Parsing;
+using OcamlCompiler.Semantics;
 
 class Program
 {
@@ -7,30 +12,19 @@ class Program
         while (true)
         {
             Console.Clear();
-            Console.WriteLine("=== Menú compilador OCaml ===");
-            Console.WriteLine("1) Tokenizar código (Lexer)");
-            Console.WriteLine("2) Parsear código (Parser)");
-            Console.WriteLine("3) Salir");
-            Console.Write("Elige una opción: ");
-
-            var option = Console.ReadLine();
-
-            if (option == "3")
-                break;
-
-            Console.WriteLine("\nIntroduce el código OCaml a analizar (ENTER dos veces para terminar):");
+            Console.WriteLine("=== Compilador OCaml (Lexer + Parser + Semántico) ===");
+            Console.WriteLine("Introduce el código OCaml a analizar (ENTER dos veces para terminar):");
 
             string line;
             bool lastLineEmpty = false;
-            var codeBuilder = new System.Text.StringBuilder();
+            var codeBuilder = new StringBuilder();
 
             while (true)
             {
                 line = Console.ReadLine();
-
                 if (string.IsNullOrWhiteSpace(line))
                 {
-                    if (lastLineEmpty) break; // Doble ENTER detectado, termina entrada
+                    if (lastLineEmpty) break;
                     lastLineEmpty = true;
                 }
                 else
@@ -42,48 +36,65 @@ class Program
 
             string code = codeBuilder.ToString();
 
-            switch (option)
+            var lexer = new OcamlLexer(code);
+            var tokensRaw = lexer.Tokenize();
+            var tokens = new List<Token>(tokensRaw);
+
+            ImprimirTokens(tokens);
+
+            Console.WriteLine("\n--- Análisis Sintáctico (Parser) ---");
+            var parser = new Parser(tokens);
+
+            Expr parsedExpr;
+            try
             {
-                case "1":
-                    RunLexer(code);
-                    break;
-
-                case "2":
-                    RunParser(code);
-                    break;
-
-                default:
-                    Console.WriteLine("Opción inválida.");
-                    break;
+                parsedExpr = parser.ParseExpr();
+                Console.WriteLine($"Expresión válida: {parsedExpr.GetType().Name}");
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"❌ Error de sintaxis: {ex.Message}");
+                Console.ResetColor();
+                Console.WriteLine("\nPresiona una tecla para intentar de nuevo...");
+                Console.ReadKey();
+                continue;
             }
 
-            Console.WriteLine("\nPresiona una tecla para volver al menú...");
+            Console.WriteLine("\n--- Análisis Semántico ---");
+            var analyzer = new SemanticAnalyzer();
+
+            try
+            {
+                analyzer.Analyze(parsedExpr);
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"❌ Error semántico: {ex.Message}");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine("\nPresiona una tecla para analizar otro código o Ctrl+C para salir...");
             Console.ReadKey();
         }
     }
 
-    static void RunLexer(string code)
+    static void ImprimirTokens(List<Token> tokens)
     {
-        var lexer = new OcamlLexer(code);
-        Console.WriteLine("\nTokens encontrados:\n");
-
-        foreach (var token in lexer.Tokenize())
+        Console.WriteLine("\n--- Tokens encontrados (Lexer) ---\n");
+        foreach (var t in tokens)
         {
-            var color = Console.ForegroundColor;
-            if (token.Type == TokenType.Error) Console.ForegroundColor = ConsoleColor.Red;
-
-            Console.WriteLine($"{token.Line}:{token.Column} {token.Type} → '{token.Lexeme}'");
-
-            Console.ForegroundColor = color;
+            if (t.Type == TokenType.Error)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Error léxico en línea {t.Line}, col {t.Column}: token inválido '{t.Lexeme}'");
+                Console.ResetColor();
+            }
+            else
+            {
+                Console.WriteLine($"{t.Line}:{t.Column} {t.Type} → '{t.Lexeme}'");
+            }
         }
-    }
-
-    static void RunParser(string code)
-    {
-        var lexer = new OcamlLexer(code);
-        var tokens = lexer.Tokenize();
-
-        var parser = new Parser(tokens);
-        parser.Parse();
     }
 }
